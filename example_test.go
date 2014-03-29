@@ -5,11 +5,12 @@
 package pulse_test
 
 import (
+	"io"
+	"log"
+	"os"
+
 	"github.com/kaey/pulse"
 	"github.com/kaey/wav"
-	"io"
-	"os"
-	"log"
 )
 
 func Example() {
