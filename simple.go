@@ -42,7 +42,6 @@ type Errno struct {
 
 func (e Errno) Error() string {
 	cstr := C.pa_strerror(C.int(e.i))
-	defer C.free(unsafe.Pointer(cstr))
 	return C.GoString(cstr)
 }
 
