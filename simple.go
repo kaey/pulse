@@ -21,6 +21,11 @@ import "C"
 
 const (
 	FormatS16le    = 0x3
+	FormatS16be    = 0x4
+	FormatS32le    = 0x7
+	FormatS32be    = 0x8
+	FormatS24le    = 0x9
+	FormatS24be    = 0xA
 	streamPlayback = 0x1
 	streamRecord   = 0x2
 )
