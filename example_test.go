@@ -69,24 +69,24 @@ func Example_echo() {
 	}
 	defer r.Close()
 	defer r.Drain()
-	
+
 	rl, err := r.Latency()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	
+
 	w, err := pulse.NewWriter(&s, "echo", "play")
 	if err != nil {
 		log.Fatalln(err)
 	}
 	defer w.Close()
 	defer w.Drain()
-	
+
 	wl, err := w.Latency()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	
+
 	log.Println("Reader latency", rl)
 	log.Println("Writer latency", wl)
 

@@ -47,7 +47,7 @@ func (err Err) Error() string {
 // Do not use this directly.
 type Conn struct {
 	simple *C.pa_simple
-	err  Err
+	err    Err
 }
 
 // NewConn creates new connection to PulseAudio server.
