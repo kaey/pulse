@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package pulse is a client library for PulseAudio.
+// Package pulse is a cgo client library for PulseAudio.
 package pulse
 
 import (
@@ -20,118 +20,158 @@ import (
 import "C"
 
 const (
-	SampleS16le    = 0x3
-	StreamPlayback = 0x1
-	StreamRecord   = 0x2
+	FormatS16le    = 0x3
+	streamPlayback = 0x1
+	streamRecord   = 0x2
 )
 
-type Connection struct {
-	simple *C.pa_simple
-	errno  Errno
-}
-
+// Sample specifies sample type for stream.
 type Sample struct {
 	Format   int32
 	Rate     uint32
 	Channels uint8
 }
 
-type Errno struct {
-	i C.int
+// Err is a type returned by all pulse functions.
+type Err struct {
+	no C.int
 }
 
-func (e Errno) Error() string {
-	cstr := C.pa_strerror(C.int(e.i))
+// Error method calls pa_strerror to get descriptive error message.
+func (err Err) Error() string {
+	cstr := C.pa_strerror(C.int(err.no))
 	return C.GoString(cstr)
 }
 
-// New creates new connection to server and returns its identifier.
-func New(s *Sample, name string, play string) (*Connection, error) {
-	c := new(Connection)
+// Conn is a PulseAudio simple connection.
+// Do not use this directly.
+type Conn struct {
+	simple *C.pa_simple
+	err  Err
+}
 
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
+// NewConn creates new connection to PulseAudio server.
+func NewConn(s *Sample, appName string, streamName string, streamType int) (*Conn, error) {
+	conn := new(Conn)
 
-	cplay := C.CString(play)
-	defer C.free(unsafe.Pointer(cplay))
+	cAppName := C.CString(appName)
+	defer C.free(unsafe.Pointer(cAppName))
 
-	c.simple = C.pa_simple_new(
+	cStreamName := C.CString(streamName)
+	defer C.free(unsafe.Pointer(cStreamName))
+
+	conn.simple = C.pa_simple_new(
 		nil,
-		cname,
-		StreamPlayback,
+		cAppName,
+		C.pa_stream_direction_t(streamType),
 		nil,
-		cplay,
+		cStreamName,
 		(*C.pa_sample_spec)(unsafe.Pointer(s)),
 		nil,
 		nil,
-		&c.errno.i,
+		&conn.err.no,
 	)
-	if c.errno.i != C.int(0) {
-		return nil, c.errno
+	if conn.err.no != C.int(0) {
+		return nil, conn.err
 	}
 
-	return c, nil
+	return conn, nil
 }
 
-// Write writes data to server.
-func (c *Connection) Write(data []byte) error {
-	cdata := (*reflect.SliceHeader)(unsafe.Pointer(&data))
-	C.pa_simple_write(
-		c.simple,
-		unsafe.Pointer(cdata.Data),
-		C.size_t(len(data)),
-		&c.errno.i,
-	)
-	if c.errno.i != C.int(0) {
-		return c.errno
+// Latency gets connection latency in usec.
+func (conn *Conn) Latency() (uint64, error) {
+	clat := C.pa_simple_get_latency(conn.simple, &conn.err.no)
+	if conn.err.no != C.int(0) {
+		return 0, conn.err
 	}
-
-	return nil
-}
-
-// Read reads data from server.
-func (c *Connection) Read(data []byte) error {
-	cdata := (*reflect.SliceHeader)(unsafe.Pointer(&data))
-	C.pa_simple_read(
-		c.simple,
-		unsafe.Pointer(cdata.Data),
-		C.size_t(len(data)),
-		&c.errno.i,
-	)
-	if c.errno.i != C.int(0) {
-		return c.errno
-	}
-
-	return nil
+	return uint64(clat), nil
 }
 
 // Drain waits until all written data is played by the server.
-func (c *Connection) Drain() error {
+func (conn *Conn) Drain() error {
 	C.pa_simple_drain(
-		c.simple,
-		&c.errno.i,
+		conn.simple,
+		&conn.err.no,
 	)
-	if c.errno.i != C.int(0) {
-		return c.errno
+	if conn.err.no != C.int(0) {
+		return conn.err
 	}
 
 	return nil
 }
 
-// Flush discards all data in the buffer.
-func (c *Connection) Flush() error {
+// Flush discards all data in the server buffer.
+func (conn *Conn) Flush() error {
 	C.pa_simple_flush(
-		c.simple,
-		&c.errno.i,
+		conn.simple,
+		&conn.err.no,
 	)
-	if c.errno.i != C.int(0) {
-		return c.errno
+	if conn.err.no != C.int(0) {
+		return conn.err
 	}
 
 	return nil
 }
 
 // Close closes connection to server.
-func (c *Connection) Close() {
-	C.pa_simple_free(c.simple)
+func (conn *Conn) Close() {
+	C.pa_simple_free(conn.simple)
+}
+
+type Reader struct {
+	*Conn
+}
+
+// NewReader creates new connection to server.
+func NewReader(s *Sample, appName string, streamName string) (*Reader, error) {
+	conn, err := NewConn(s, appName, streamName, streamRecord)
+	if err != nil {
+		return nil, err
+	}
+	return &Reader{conn}, nil
+}
+
+// Read reads data from server.
+func (r *Reader) Read(data []byte) error {
+	cdata := (*reflect.SliceHeader)(unsafe.Pointer(&data))
+	C.pa_simple_read(
+		r.Conn.simple,
+		unsafe.Pointer(cdata.Data),
+		C.size_t(len(data)),
+		&r.Conn.err.no,
+	)
+	if r.Conn.err.no != C.int(0) {
+		return r.Conn.err
+	}
+
+	return nil
+}
+
+type Writer struct {
+	*Conn
+}
+
+// NewWriter creates new connection to server.
+func NewWriter(s *Sample, appName string, streamName string) (*Writer, error) {
+	conn, err := NewConn(s, appName, streamName, streamPlayback)
+	if err != nil {
+		return nil, err
+	}
+	return &Writer{conn}, nil
+}
+
+// Write writes data to server.
+func (w *Writer) Write(data []byte) error {
+	cdata := (*reflect.SliceHeader)(unsafe.Pointer(&data))
+	C.pa_simple_write(
+		w.Conn.simple,
+		unsafe.Pointer(cdata.Data),
+		C.size_t(len(data)),
+		&w.Conn.err.no,
+	)
+	if w.Conn.err.no != C.int(0) {
+		return w.Conn.err
+	}
+
+	return nil
 }

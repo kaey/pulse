@@ -13,7 +13,7 @@ import (
 	"github.com/kaey/wav"
 )
 
-func Example() {
+func Example_wav() {
 	file, err := os.Open(os.Args[1])
 	if err != nil {
 		log.Fatalln(err)
@@ -27,19 +27,19 @@ func Example() {
 	defer rd.Close()
 
 	s := pulse.Sample{
-		Format:   pulse.SampleS16le,
+		Format:   pulse.FormatS16le,
 		Rate:     rd.SampleRate,
 		Channels: rd.Channels,
 	}
 
-	c, err := pulse.New(&s, "playing", file.Name())
+	w, err := pulse.NewWriter(&s, "player", file.Name())
 	if err != nil {
 		log.Fatalln(err)
 	}
-	defer c.Close()
-	defer c.Drain()
+	defer w.Close()
+	defer w.Drain()
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, 2048)
 	for {
 		n, err := rd.Read(buf)
 		if err != nil && err != io.EOF {
@@ -49,7 +49,55 @@ func Example() {
 			break
 		}
 
-		err = c.Write(buf[:n])
+		err = w.Write(buf[:n])
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
+}
+
+func Example_echo() {
+	s := pulse.Sample{
+		Format:   pulse.FormatS16le,
+		Rate:     44100,
+		Channels: 2,
+	}
+
+	r, err := pulse.NewReader(&s, "echo", "mic")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer r.Close()
+	defer r.Drain()
+	
+	rl, err := r.Latency()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	
+	w, err := pulse.NewWriter(&s, "echo", "play")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer w.Close()
+	defer w.Drain()
+	
+	wl, err := w.Latency()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	
+	log.Println("Reader latency", rl)
+	log.Println("Writer latency", wl)
+
+	buf := make([]byte, 2048)
+	for {
+		err := r.Read(buf)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		err = w.Write(buf)
 		if err != nil {
 			log.Fatalln(err)
 		}
